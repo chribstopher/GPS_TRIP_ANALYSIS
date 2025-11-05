@@ -34,6 +34,8 @@ class GPSDataCleaner:
     def remove_outliers(self, points: List[GPSPoint], max_speed_knots=100) -> List[GPSPoint]:
         """
         Removes GPS points that represent impossible movements (Gps glitches)
+
+        CHECK THE CHECKSUMS AT SOME POINT?
         """
         if len(points) < 2:
             return points
