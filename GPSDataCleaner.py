@@ -1,5 +1,11 @@
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
+
+import math
+from math import radians, sin, cos, sqrt, atan2
+import pandas as pd
+
+from GPSPoint import GPSPoint
 
 
 class GPSDataCleaner:
@@ -7,65 +13,101 @@ class GPSDataCleaner:
     A class to clean and preprocess GPS data.
     """
 
-    def __init__(self, points: List[GPSPoint]):
-        self.points = points
+    # def __init__(self, points: List[GPSPoint]):
+    #     self.points = points
 
-    def remove_duplicates(self, time_threshold_seconds=0.1) -> List[GPSPoint]:
+    def remove_duplicates(df: pd.DataFrame, time_threshold_seconds=0.1) -> pd.DataFrame:
         """
         Remove duplicate GPS points that are within a certain time threshold.
         """
-        if not self.points:
-            return []
+        # check if df is empty
+        if df.empty:
+            return df
 
-        cleaned = [self.points[0]]
-        for point in self.points[1:]:
-            last = cleaned[-1]
-            time_diff = abs((point.timestamp - last.timestamp).total_seconds())
+        # make a deep copy of df to remove dups from
+        df_cpy = df.copy()
+        # make sure timestamp is a datetime object
+        df_cpy['timestamp'] = pd.to_datetime(df_cpy['timestamp'])
 
-            # if the points are very close in time and location, skip the duplicate
-            if (time_diff < time_threshold_seconds and 
-                abs(point.latitude - last.latitude) < 0.0001 and
-                abs(point.longitude - last.longitude) < 0.0001):
+        # get the first row of the data to begin cleaning
+        cleaned = [df_cpy.iloc[0]]
+        last = df_cpy.iloc[0]
+        # for every row in the df
+        for row_idx in range(1, len(df_cpy)):
+            # get cur row
+            cur_row = df_cpy.iloc[row_idx]
+            # calculate for the difference btwn current time and last known time
+            time_diff = abs((cur_row['timestamp'] - last['timestamp']).total_seconds())
+
+            # check to see how far away points are in time
+            # check to see how close the lat and long are as well
+            if (time_diff < time_threshold_seconds and
+                abs(cur_row['latitude'] - last['latitude']) < 0.0001 and
+                abs(cur_row['longitude'] - last['longitude']) < 0.0001):
+                # if points are super close together, they are likely duplicate
+                # so skip!
                 continue
-            cleaned.append(point)
-        print(f"Removed {len(self.points) - len(cleaned)} duplicate points.")
-        return cleaned
 
-    def remove_outliers(self, points: List[GPSPoint], max_speed_knots=100) -> List[GPSPoint]:
+            cleaned.append(cur_row)
+            last = cur_row
+
+        # create new dataframe and re-index to account for removed rows
+        nodupe_df = pd.DataFrame(cleaned).reset_index(drop=True)
+        print(f"Removed {len(df_cpy) - len(nodupe_df)} duplicate points.")
+        return nodupe_df
+
+
+
+    def remove_outliers(df: pd.DataFrame, max_speed_knots=100) -> pd.DataFrame:
         """
         Removes GPS points that represent impossible movements (Gps glitches)
 
         CHECK THE CHECKSUMS AT SOME POINT?
         """
-        if len(points) < 2:
-            return points
 
-        cleaned = [points[0]]
-        for i in range(1, len(points)):
+        # check to make sure there are at least 2 points to work with
+        if len(df) < 2:
+            return df
+
+        # make a deep copy of df to remove outliers from
+        df_cpy = df.copy()
+
+        # start with first row
+        cleaned = [df_cpy.iloc[0]]
+        for row_idx in range(1, len(df_cpy)):
+            # get previous and current point
             prev = cleaned[-1]
-            curr = points[i]
-            # calculating the time difference
-            time_diff = (curr.timestamp - prev.timestamp).total_seconds()
+            curr = df_cpy.iloc[row_idx]
+            # calculate for the difference btwn current time and last known time
+            time_diff = abs((curr['timestamp'] - prev['timestamp']).total_seconds())
             if time_diff <= 0:
                 continue  # skip invalid time differences
-            
-            # calculating the distance
-            distance = prev.distance_to(curr)
 
-            #calculate implied speed in knots
-            implied_speed_knots = (distance / time_diff) * 1.94384  # meters per second to knots
+            # given lat and long points with respect to time
+            # use haversine dist to convert lat/long to speed in knots
+            distance = haversine_distance(
+                prev['latitude'], prev['longitude'],
+                curr['latitude'], curr['longitude']
+            )
+            # calculate implied speed in knots
+            implied_speed_knots = (distance / time_diff) * 1.94384
 
             # if the speed is impossibly high, skip the point
             if implied_speed_knots > max_speed_knots:
                 continue
 
             # check for very large jumps in location that could signify errors
-            if abs(curr.latitude - prev.latitude) > 10 or abs(curr.longitude - prev.longitude) > 10:
-                continue
+            if abs(curr['latitude'] - prev['latitude']) > 10 or abs(curr['longitude'] - prev['longitude']) > 10:
+                continue # skip if jump is impossibly large with respect to time
 
             cleaned.append(curr)
-        print(f"Removed {len(points) - len(cleaned)} outlier points.")
-        return cleaned    
+            prev = curr
+
+        # create new dataframe and re-index to account for removed rows
+        nooutlier_df = pd.DataFrame(cleaned).reset_index(drop=True)
+
+        print(f"Removed {len(df_cpy) - len(nooutlier_df)} outlier points.")
+        return nooutlier_df
 
     def trim_stationary_endpoints(self, points: List[GPSPoint], 
         movement_threshold_knots=0.5) -> Tuple[List[GPSPoint], int, int]:
@@ -139,5 +181,15 @@ class GPSDataCleaner:
         cleaned = self.simplify_straight_segments(cleaned)
         print("GPS data cleaning completed.\n")
         return cleaned
+
+
+# get dist between two gps points given current lat/long and previous lat/long
+def haversine_distance(lat1, lon1, lat2, lon2):
+    R = 6371000  # Earth radius in meters
+    phi1, phi2 = radians(lat1), radians(lat2)
+    dphi = radians(lat2 - lat1)
+    dlambda = radians(lon2 - lon1)
+    a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda / 2) ** 2
+    return 2 * R * atan2(sqrt(a), sqrt(1 - a))
 
         
