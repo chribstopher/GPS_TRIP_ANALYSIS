@@ -45,6 +45,12 @@ def clean_dataframe(df):
     plot_data(df, no_endpoints)
 
 
+def detect_stops(df):
+    " find segments where the car has stopped "
+
+    df_cpy = df.copy()
+
+
 if __name__ == "__main__":
     parser = GPSParser()
     gps_points = parser.parse_file('gps_files/2025_05_01__145019_gps_file.txt')
