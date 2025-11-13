@@ -58,7 +58,7 @@ def gps_to_kml(df):
     # create a list of location tuples (lat lon)
     # zip creates tuples out of data frame columns
     # list creates a list of the location tuples
-    location_tuples = list(zip(df['latitude'], df['longitude']))
+    location_tuples = list(zip(df['longitude'], df['latitude']))
 
     # set the coords to locatin tuples
     linestring.coords = location_tuples
@@ -68,7 +68,7 @@ def gps_to_kml(df):
     linestring.style.linestyle.width = 3
 
     for idx, row in df.iterrows():
-        if row['speed_knots'] <= 0.1:
+        if row['speed_knots'] <= 0.01:
             point = kml.newpoint()
             point.coords = [(row['longitude'], row['latitude'])]
             point.style.iconstyle.color = simplekml.Color.red
@@ -84,11 +84,11 @@ def visualize_kml():
     # Basic plot
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    lines = gdf[gdf.geometry.type == 'lineString']
+    lines = gdf[gdf.geometry.type == 'LineString']
     lines.plot(ax=ax, color='yellow', linewidth=3, label='Path')
 
     points = gdf[gdf.geometry.type == 'Point']
-    points.plot(ax=ax, color='red', markersize=5, label='stop')
+    points.plot(ax=ax, color='red', markersize=50, label='stop')
 
     plt.title('GPS Track from KML')
     plt.xlabel('Longitude')
