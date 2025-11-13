@@ -3,7 +3,7 @@ import sys
 import os
 from datetime import datetime
 from gpsParser import GPSParser
-from GPSDataCleaner import GPSDataCleaner as gdc
+from GPSDataCleaner import GPSDataCleaner as gdc, GPSDataCleaner
 from GPSAnalyzer import GPSAnalyzer
 from KMLExporter import KMLExporter
 import matplotlib.pyplot as plt
@@ -111,10 +111,13 @@ def process_gps_file(input_file: str, output_kml: str = None,
     print(f"✓ Parsed {len(df_original)} GPS points")
 
     # STEP 2: Clean data
+    cleaner = GPSDataCleaner()
     print("\n[2/6] Cleaning GPS data...")
     df_cleaned = gdc.remove_duplicates(df_original)
     df_cleaned = gdc.remove_outliers(df_cleaned)
     df_cleaned = gdc.trim_stationary_endpoints(df_cleaned)
+    df_cleaned = gdc.simplify_straight_segments(cleaner, df_cleaned)
+
 
     # Optional: Apply Kalman filtering
     if use_kalman:
@@ -190,84 +193,6 @@ def process_gps_file(input_file: str, output_kml: str = None,
     }
 
 
-def batch_process_files(file_list: list, output_dir: str = "output"):
-    """
-    Process multiple GPS files in batch
-
-    Args:
-        file_list: List of GPS file paths
-        output_dir: Directory for output files
-    """
-
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    results = []
-
-    print(f"\n{'=' * 70}")
-    print(f"BATCH PROCESSING {len(file_list)} FILES")
-    print(f"{'=' * 70}\n")
-
-    for i, file_path in enumerate(file_list, 1):
-        print(f"\n{'=' * 70}")
-        print(f"Processing file {i}/{len(file_list)}: {file_path}")
-        print(f"{'=' * 70}")
-
-        try:
-            # Generate output KML path
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            output_kml = os.path.join(output_dir, f"{base_name}_route.kml")
-
-            # Process file
-            result = process_gps_file(file_path, output_kml, show_plots=False)
-
-            if result:
-                results.append({
-                    'file': file_path,
-                    'success': True,
-                    'duration_minutes': result['summary']['duration_minutes'],
-                    'distance_miles': result['summary']['distance_miles'],
-                    'avg_speed_mph': result['summary']['avg_speed_mph'],
-                    'num_stops': result['summary']['num_stops'],
-                    'num_turns': result['summary']['num_left_turns'],
-                    'kml_file': output_kml
-                })
-            else:
-                results.append({
-                    'file': file_path,
-                    'success': False,
-                    'error': 'Processing failed'
-                })
-
-        except Exception as e:
-            print(f"\n❌ ERROR processing {file_path}: {e}")
-            results.append({
-                'file': file_path,
-                'success': False,
-                'error': str(e)
-            })
-
-    # Print batch summary
-    print(f"\n{'=' * 70}")
-    print("BATCH PROCESSING COMPLETE")
-    print(f"{'=' * 70}")
-
-    results_df = pd.DataFrame(results)
-    successful = results_df[results_df['success'] == True]
-
-    print(f"\nSuccessfully processed: {len(successful)}/{len(results)} files")
-
-    if len(successful) > 0:
-        print("\nTrip Durations:")
-        for _, row in successful.iterrows():
-            print(f"  {os.path.basename(row['file'])}: {row['duration_minutes']:.2f} minutes")
-
-    # Save results to CSV
-    results_file = os.path.join(output_dir, "batch_results.csv")
-    results_df.to_csv(results_file, index=False)
-    print(f"\nResults saved to: {results_file}")
-
-    return results_df
 
 
 def main():
@@ -303,9 +228,6 @@ def main():
     if len(files) == 1:
         # Single file mode
         process_gps_file(files[0], show_plots=show_plots, use_kalman=use_kalman)
-    else:
-        # Batch mode
-        batch_process_files(files, output_dir=output_dir)
 
 
 if __name__ == "__main__":

@@ -199,6 +199,61 @@ class GPSDataCleaner:
 
         return df
 
+    def simplify_straight_segments(self, df: pd.DataFrame,
+                                   angle_threshold=5.0, min_distance=10) -> pd.DataFrame:
+        """Remove redundant points along straight paths using a pandas DataFrame."""
+        if len(df) < 3:
+            return df.copy()
+
+        # Ensure required columns exist
+        if not {'latitude', 'longitude'}.issubset(df.columns):
+            raise ValueError("DataFrame must contain 'latitude' and 'longitude' columns")
+
+        simplified_indices = [0]  # always keep the first point
+
+        for i in range(1, len(df) - 1):
+            prev = df.iloc[simplified_indices[-1]]
+            curr = df.iloc[i]
+            next_pt = df.iloc[i + 1]
+
+            # Calculate bearings using helper function
+            bearing1 = get_curdirection(prev['latitude'], prev['longitude'],
+                                        curr['latitude'], curr['longitude'])
+            bearing2 = get_curdirection(curr['latitude'], curr['longitude'],
+                                        next_pt['latitude'], next_pt['longitude'])
+
+            # Calculate angle difference
+            angle_diff = abs(bearing2 - bearing1)
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
+
+            # Calculate distance between prev and curr (in meters)
+            distance = haversine_distance(prev['latitude'], prev['longitude'],
+                                          curr['latitude'], curr['longitude'])
+
+            # Keep if direction changes or point far enough away
+            if angle_diff > angle_threshold or distance > min_distance:
+                simplified_indices.append(i)
+
+        simplified_indices.append(len(df) - 1)  # always keep last point
+
+        simplified_df = df.iloc[simplified_indices].reset_index(drop=True)
+        print(f"Simplified from {len(df)} to {len(simplified_df)} points")
+
+        return simplified_df
+
+    def _calculate_bearing(self, point1: GPSPoint, point2: GPSPoint) -> float:
+        """Calculate bearing between two points in degrees"""
+        lat1 = math.radians(point1.latitude)
+        lat2 = math.radians(point2.latitude)
+        dlon = math.radians(point2.longitude - point1.longitude)
+
+        y = math.sin(dlon) * math.cos(lat2)
+        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+
+        bearing = math.degrees(math.atan2(y, x))
+        return (bearing + 360) % 360
+
 
     def clean_data(self) -> List[GPSPoint]:
         """ performs all of the data cleaning steps"""
@@ -210,6 +265,7 @@ class GPSDataCleaner:
         # trimming stationary endpoints
         cleaned, _, _ = self.trim_stationary_endpoints(cleaned)
         # simplifying straight segments
+        print ("starting to simplify straight segments")
         cleaned = self.simplify_straight_segments(cleaned)
         print("GPS data cleaning completed.\n")
         return cleaned

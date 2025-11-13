@@ -68,7 +68,7 @@ class GPSAnalyzer:
 
         return stops_df
 
-    def detect_left_turns(self, heading_change_threshold=45, speed_threshold=2,
+    def detect_left_turns(self, heading_change_threshold=50, speed_threshold=2,
                           window_size=5) -> pd.DataFrame:
         """
         Detect left turns based on heading change
