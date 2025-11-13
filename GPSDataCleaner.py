@@ -20,12 +20,27 @@ class GPSDataCleaner:
         """
         Remove duplicate GPS points that are within a certain time threshold.
         """
-        # check if df is empty
-        if df.empty:
-            return df
-
+        initial_len = len(df)
         # make a deep copy of df to remove dups from
         df_cpy = df.copy()
+
+        # remove any NaN values that could corrupt data
+        df_cpy = df_cpy.dropna(subset=['latitude', 'longitude', 'timestamp'])
+
+        # Remove invalid latitude/longitude values
+        df_cpy = df_cpy[
+            (df_cpy['latitude'] >= -90) & (df_cpy['latitude'] <= 90) &
+            (df_cpy['longitude'] >= -180) & (df_cpy['longitude'] <= 180)
+            ]
+
+        removed_invalid = initial_len - len(df_cpy)
+        if removed_invalid > 0:
+            print(f"Removed {removed_invalid} rows with invalid/NaN GPS values.")
+
+        # check if df is empty
+        if df_cpy.empty:
+            return df_cpy
+
         # make sure timestamp is a datetime object
         df_cpy['timestamp'] = pd.to_datetime(df_cpy['timestamp'])
 
@@ -77,6 +92,7 @@ class GPSDataCleaner:
             # get previous and current point
             prev = cleaned[-1]
             curr = df_cpy.iloc[row_idx]
+
             # calculate for the difference btwn current time and last known time
             time_diff = abs((curr['timestamp'] - prev['timestamp']).total_seconds())
             if time_diff <= 0:
