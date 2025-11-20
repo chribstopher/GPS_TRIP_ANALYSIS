@@ -43,10 +43,10 @@ class KMLExporter:
         kml_content.append(f'  <description>GPS track with {len(self.df)} points</description>')
 
         # Add styles
-        self._add_styles(kml_content)
+        self.add_styles(kml_content)
 
         # Add route path(s)
-        self._add_route_paths(kml_content, max_points_per_path)
+        self.add_route_path(kml_content)
 
         # Add markers
         self._add_start_end_markers(kml_content)
@@ -69,24 +69,23 @@ class KMLExporter:
             print(f"  - Right turns: {len(self.right_turns_df)}")
         print(f"\nOpen {output_filename} in Google Earth to view")
 
-    def _add_styles(self, kml_content: list):
-        """Add KML style definitions"""
+    def add_styles(self, kml_content: list):
 
-        # Yellow route line
+        # add the route path to file
         kml_content.extend([
             '  <Style id="routeStyle">',
             '    <LineStyle>',
-            '      <color>ff00ffff</color>',  # AABBGGRR format: yellow
+            '      <color>ff00ffff</color>',  # use AABBGGRR format for yellow
             '      <width>4</width>',
             '    </LineStyle>',
             '  </Style>',
         ])
 
-        # Red stop markers
+        # add stops to file
         kml_content.extend([
             '  <Style id="stopStyle">',
             '    <IconStyle>',
-            '      <color>ff0000ff</color>',  # Red
+            '      <color>ff0000ff</color>',  # red
             '      <scale>1.3</scale>',
             '      <Icon>',
             '        <href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href>',
@@ -95,7 +94,7 @@ class KMLExporter:
             '  </Style>',
         ])
 
-        # Yellow left turn markers
+        # add left turns
         kml_content.extend([
             '  <Style id="leftTurnStyle">',
             '    <IconStyle>',
@@ -108,24 +107,11 @@ class KMLExporter:
             '  </Style>',
         ])
 
-        # Green right turn markers (optional)
-        kml_content.extend([
-            '  <Style id="rightTurnStyle">',
-            '    <IconStyle>',
-            '      <color>ff00ff00</color>',  # Green
-            '      <scale>1.1</scale>',
-            '      <Icon>',
-            '        <href>http://maps.google.com/mapfiles/kml/paddle/grn-blank.png</href>',
-            '      </Icon>',
-            '    </IconStyle>',
-            '  </Style>',
-        ])
-
-        # Start marker (green flag)
+        # add stop to the file
         kml_content.extend([
             '  <Style id="startStyle">',
             '    <IconStyle>',
-            '      <color>ff00ff00</color>',
+            '      <color>ff00ff00</color>',  # Green
             '      <scale>1.5</scale>',
             '      <Icon>',
             '        <href>http://maps.google.com/mapfiles/kml/paddle/go.png</href>',
@@ -134,7 +120,7 @@ class KMLExporter:
             '  </Style>',
         ])
 
-        # End marker (red flag)
+        # add ends to the file
         kml_content.extend([
             '  <Style id="endStyle">',
             '    <IconStyle>',
@@ -147,44 +133,32 @@ class KMLExporter:
             '  </Style>',
         ])
 
-    def _add_route_paths(self, kml_content: list, max_points_per_path: int):
-        """Add route line(s) - split if too many points"""
+    def add_route_path(self, kml_content: list):
 
-        total_points = len(self.df)
-        num_paths = (total_points // max_points_per_path) + 1
+        # start route line
+        kml_content.extend([
+            '  <Placemark>',
+            '    <name>Route</name>',
+            '    <styleUrl>#routeStyle</styleUrl>',
+            '    <LineString>',
+            '      <tessellate>1</tessellate>',
+            '      <altitudeMode>clampToGround</altitudeMode>',
+            '      <coordinates>',
+        ])
 
-        if num_paths > 1:
-            print(f"  Splitting route into {num_paths} paths (max {max_points_per_path} points each)")
+        for idx, coord in self.df.iterrows():
+            altitude = 3  # we don't care about alt. so hardcode to 3
+            kml_content.append(
+                f'        {coord["longitude"]:.6f},{coord["latitude"]:.6f},{altitude:.1f}'
 
-        for path_num in range(num_paths):
-            start_idx = path_num * max_points_per_path
-            end_idx = min((path_num + 1) * max_points_per_path, total_points)
+            )
 
-            path_df = self.df.iloc[start_idx:end_idx]
-
-            kml_content.extend([
-                '  <Placemark>',
-                f'    <name>Route {path_num + 1}</name>' if num_paths > 1 else '    <name>Route</name>',
-                '    <styleUrl>#routeStyle</styleUrl>',
-                '    <LineString>',
-                '      <tessellate>1</tessellate>',
-                '      <altitudeMode>clampToGround</altitudeMode>',
-                '      <coordinates>',
-            ])
-
-            # Add coordinates (lon,lat,alt - note: KML uses lon,lat order!)
-            for _, point in path_df.iterrows():
-                # Use altitude if available, otherwise use 3m above ground
-                alt = point.get('altitude', 3)
-                kml_content.append(
-                    f'        {point["longitude"]:.6f},{point["latitude"]:.6f},{alt:.1f}'
-                )
-
-            kml_content.extend([
-                '      </coordinates>',
-                '    </LineString>',
-                '  </Placemark>',
-            ])
+        # close out the points kml tags
+        kml_content.extend([
+            '      </coordinates>',
+            '    </LineString>',
+            '  </Placemark>',
+        ])
 
     def _add_start_end_markers(self, kml_content: list):
         """Add start and end markers"""
