@@ -68,138 +68,75 @@ class GPSAnalyzer:
 
         return stops_df
 
-    def detect_left_turns(self, heading_change_threshold=50, speed_threshold=2,
+    def detect_left_turns(self, heading_change_threshold=3e-07, speed_threshold=2,
                           window_size=5) -> pd.DataFrame:
         """
         Detect left turns based on heading change
 
-        Args:
-            heading_change_threshold: Minimum heading change in degrees to count as turn
+        Args:'
+            heading_change_threshold: Minimum heading change in degrees to count as turn, 2e-7 chosen based on all
+            cross products calculated in gps data
             speed_threshold: Minimum speed in knots to consider heading valid
             window_size: Number of points to look ahead for cumulative turn
 
         Returns:
             DataFrame with columns: [idx, heading_change, latitude, longitude]
         """
-        print("\n=== Detecting Left Turns ===")
-
         turns = []
+
+        print("_______detecting left turns__________")
 
         # Calculate heading changes between consecutive points
         for i in range(window_size, len(self.df) - window_size):
             curr = self.df.iloc[i]
 
-            # Only consider if vehicle is moving (heading is unreliable when stopped)
+            # Only consider if vehicle is moving
             if curr['speed_knots'] < speed_threshold:
                 continue
 
-            # Look at heading change over a window to catch gradual turns
-            prev_heading = self.df.iloc[i - window_size]['heading']
-            curr_heading = curr['heading']
+            # calculate left turn angle using z-component cross product
+            # which needs 3 points
+            prev = self.df.iloc[i - window_size]
+            next = self.df.iloc[i + window_size]
 
-            # Calculate heading change (normalize to -180 to 180)
-            heading_change = curr_heading - prev_heading
+            vector1 = np.array([
+                curr['longitude'] - prev['longitude'],
+                curr['latitude'] - prev['latitude']
+            ])
 
-            # Normalize to -180 to 180 range
-            if heading_change > 180:
-                heading_change -= 360
-            elif heading_change < -180:
-                heading_change += 360
+            vector2 = np.array([
+                next['longitude'] - curr['longitude'],
+                next['latitude'] - curr['latitude']
+            ])
 
-            # Negative heading change = left turn (counterclockwise)
-            if heading_change < -heading_change_threshold:
-                # Check if we already detected a turn nearby (avoid duplicates)
+            # get 2d cross product
+            cross_prod = vector1[0] * vector2[1] - vector1[1] * vector2[0]
+
+            # print(f"Index {i}: cross_prod = {cross_prod}")
+
+            # Calculate magnitudes
+            mag_v1 = np.sqrt(vector1[0] ** 2 + vector1[1] ** 2)
+            mag_v2 = np.sqrt(vector2[0] ** 2 + vector2[1] ** 2)
+
+            # Avoid division by zero
+            if mag_v1 > 0 and mag_v2 > 0:
+                # Normalize cross product
+                normalized_cross = cross_prod / (mag_v1 * mag_v2)
+
+            # check if turn is left (negative z component)
+            if normalized_cross < -0.5:
+                # check for a nearby turn to avoid duplicates
                 if not turns or i - turns[-1]['idx'] > window_size * 2:
                     turns.append({
                         'idx': i,
-                        'heading_change': heading_change,
+                        'cross_product_z': cross_prod,
                         'latitude': curr['latitude'],
                         'longitude': curr['longitude'],
-                        'heading': curr['heading']
                     })
 
+        # create turns DF and return
         turns_df = pd.DataFrame(turns)
-        print(f"Detected {len(turns_df)} left turns (change >= {heading_change_threshold}°)")
-
-        if len(turns_df) > 0:
-            print(f"Average turn angle: {abs(turns_df['heading_change'].mean()):.1f}°")
-
         return turns_df
-
-    def detect_turns_by_bearing(self, angle_threshold=45, speed_threshold=2,
-                                window_size=3) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Alternative turn detection using calculated bearing between points
-        More reliable than GPS heading when available
-
-        Returns:
-            Tuple of (left_turns_df, right_turns_df)
-        """
-        print("\n=== Detecting Turns by Bearing ===")
-
-        # Calculate bearing for each segment
-        bearings = []
-        for i in range(len(self.df) - 1):
-            curr = self.df.iloc[i]
-            next_pt = self.df.iloc[i + 1]
-
-            bearing = get_curdirection(
-                curr['latitude'], curr['longitude'],
-                next_pt['latitude'], next_pt['longitude']
-            )
-            bearings.append(bearing)
-
-        bearings.append(bearings[-1])  # Duplicate last bearing
-        self.df['bearing'] = bearings
-
-        left_turns = []
-        right_turns = []
-
-        for i in range(window_size, len(self.df) - window_size):
-            curr = self.df.iloc[i]
-
-            # Only consider if moving
-            if curr['speed_knots'] < speed_threshold:
-                continue
-
-            # Calculate bearing change over window
-            prev_bearing = self.df.iloc[i - window_size]['bearing']
-            curr_bearing = curr['bearing']
-
-            bearing_change = curr_bearing - prev_bearing
-
-            # Normalize to -180 to 180
-            if bearing_change > 180:
-                bearing_change -= 360
-            elif bearing_change < -180:
-                bearing_change += 360
-
-            # Detect significant turns
-            if bearing_change < -angle_threshold:
-                # Left turn
-                if not left_turns or i - left_turns[-1]['idx'] > window_size * 2:
-                    left_turns.append({
-                        'idx': i,
-                        'bearing_change': bearing_change,
-                        'latitude': curr['latitude'],
-                        'longitude': curr['longitude']
-                    })
-            elif bearing_change > angle_threshold:
-                # Right turn
-                if not right_turns or i - right_turns[-1]['idx'] > window_size * 2:
-                    right_turns.append({
-                        'idx': i,
-                        'bearing_change': bearing_change,
-                        'latitude': curr['latitude'],
-                        'longitude': curr['longitude']
-                    })
-
-        left_df = pd.DataFrame(left_turns)
-        right_df = pd.DataFrame(right_turns)
-
-        print(f"Detected {len(left_df)} left turns, {len(right_df)} right turns")
-
-        return left_df, right_df
 
     def calculate_trip_duration(self) -> Tuple[timedelta, float, float]:
         """

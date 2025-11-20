@@ -147,7 +147,7 @@ def process_gps_file(input_file: str, output_kml: str = None,
 
     # STEP 5: Generate KML
     print("\n[4/6] Generating KML file...")
-    exporter = KMLExporter(df_cleaned, stops_df, left_turns_df, right_turns_df)
+    exporter = KMLExporter(df_cleaned, stops_df, left_turns_df)
 
     trip_name = f"GPS Track - {summary['start_time'].strftime('%Y-%m-%d %H:%M')}"
     exporter.generate_kml(output_kml, trip_name)

@@ -3,28 +3,25 @@ from typing import Optional
 
 
 class KMLExporter:
-    """Export GPS data to KML format with markers for stops and turns"""
+    """decorate a KML file based on the GPS analyzer and export"""
 
     def __init__(self, df: pd.DataFrame, stops_df: pd.DataFrame = None,
-                 left_turns_df: pd.DataFrame = None, right_turns_df: pd.DataFrame = None):
+                 left_turns_df: pd.DataFrame = None):
         """
-        Initialize KML exporter
-
+        init KML exporter
         Args:
             df: Main GPS data DataFrame
             stops_df: DataFrame with stop information
             left_turns_df: DataFrame with left turn information
-            right_turns_df: DataFrame with right turn information (optional)
         """
         self.df = df
         self.stops_df = stops_df if stops_df is not None else pd.DataFrame()
         self.left_turns_df = left_turns_df if left_turns_df is not None else pd.DataFrame()
-        self.right_turns_df = right_turns_df if right_turns_df is not None else pd.DataFrame()
 
     def generate_kml(self, output_filename: str, trip_name: str = "GPS Track",
                      max_points_per_path: int = 10000):
         """
-        Generate KML file with route line and markers
+        create the KML file and save to current dir
 
         Args:
             output_filename: Path to output KML file
@@ -49,9 +46,9 @@ class KMLExporter:
         self.add_route_path(kml_content)
 
         # Add markers
-        self._add_start_end_markers(kml_content)
-        self._add_stop_markers(kml_content)
-        self._add_turn_markers(kml_content)
+        self.start_end_markers(kml_content)
+        self.stop_markers(kml_content)
+        self.turn_markers(kml_content)
 
         # KML Footer
         kml_content.append('</Document>')
@@ -60,14 +57,6 @@ class KMLExporter:
         # Write to file
         with open(output_filename, 'w', encoding='utf-8') as f:
             f.write('\n'.join(kml_content))
-
-        print(f"✓ KML file created successfully")
-        print(f"  - Route points: {len(self.df)}")
-        print(f"  - Stops: {len(self.stops_df)}")
-        print(f"  - Left turns: {len(self.left_turns_df)}")
-        if len(self.right_turns_df) > 0:
-            print(f"  - Right turns: {len(self.right_turns_df)}")
-        print(f"\nOpen {output_filename} in Google Earth to view")
 
     def add_styles(self, kml_content: list):
 
@@ -88,7 +77,7 @@ class KMLExporter:
             '      <color>ff0000ff</color>',  # red
             '      <scale>1.3</scale>',
             '      <Icon>',
-            '        <href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href>',
+            '        <href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href>',  # google maps icon
             '      </Icon>',
             '    </IconStyle>',
             '  </Style>',
@@ -101,7 +90,7 @@ class KMLExporter:
             '      <color>ff00ffff</color>',  # Yellow
             '      <scale>1.1</scale>',
             '      <Icon>',
-            '        <href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href>',
+            '        <href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href>',  # google maps icon
             '      </Icon>',
             '    </IconStyle>',
             '  </Style>',
@@ -114,7 +103,7 @@ class KMLExporter:
             '      <color>ff00ff00</color>',  # Green
             '      <scale>1.5</scale>',
             '      <Icon>',
-            '        <href>http://maps.google.com/mapfiles/kml/paddle/go.png</href>',
+            '        <href>http://maps.google.com/mapfiles/kml/paddle/go.png</href>', # google maps icon
             '      </Icon>',
             '    </IconStyle>',
             '  </Style>',
@@ -127,7 +116,7 @@ class KMLExporter:
             '      <color>ff0000ff</color>',
             '      <scale>1.5</scale>',
             '      <Icon>',
-            '        <href>http://maps.google.com/mapfiles/kml/paddle/stop.png</href>',
+            '        <href>http://maps.google.com/mapfiles/kml/paddle/stop.png</href>',  # google maps icon
             '      </Icon>',
             '    </IconStyle>',
             '  </Style>',
@@ -160,14 +149,15 @@ class KMLExporter:
             '  </Placemark>',
         ])
 
-    def _add_start_end_markers(self, kml_content: list):
-        """Add start and end markers"""
+    def start_end_markers(self, kml_content: list):
 
+        # end if df is empty
         if len(self.df) == 0:
             return
 
-        # Start marker
+        # create start at first idx of df
         start = self.df.iloc[0]
+        # add it to the kml file
         kml_content.extend([
             '  <Placemark>',
             '    <name>Start</name>',
@@ -179,8 +169,9 @@ class KMLExporter:
             '  </Placemark>',
         ])
 
-        # End marker
+        # create end at last idx of df
         end = self.df.iloc[-1]
+        # add to kml file
         kml_content.extend([
             '  <Placemark>',
             '    <name>End</name>',
@@ -192,17 +183,22 @@ class KMLExporter:
             '  </Placemark>',
         ])
 
-    def _add_stop_markers(self, kml_content: list):
-        """Add red markers for detected stops"""
+    def stop_markers(self, kml_content: list):
 
+        # if car never stops, return
         if len(self.stops_df) == 0:
             return
 
+        # iterate through all stops in the dataframe
         for idx, stop in self.stops_df.iterrows():
+            # get the duration of the stop from
             duration_str = f"{stop['duration']:.1f}s"
+            # if stop is significant
             if stop['duration'] >= 60:
+                # truncate duration for plotting (so we don't plot multiple stops)
                 duration_str = f"{stop['duration'] / 60:.1f}m"
 
+            # append to the kml file rows
             kml_content.extend([
                 '  <Placemark>',
                 f'    <name>Stop {idx + 1}</name>',
@@ -214,14 +210,17 @@ class KMLExporter:
                 '  </Placemark>',
             ])
 
-    def _add_turn_markers(self, kml_content: list):
-        """Add markers for detected turns"""
+    def turn_markers(self, kml_content: list):
 
-        # Left turns (yellow)
+        # mark left turns as yellow
+        # if there are turns detected in the df
         if len(self.left_turns_df) > 0:
+            # iterate through them
             for idx, turn in self.left_turns_df.iterrows():
+                # get the angle of direction
                 angle = abs(turn.get('heading_change', turn.get('bearing_change', 0)))
 
+                # add to KML file
                 kml_content.extend([
                     '  <Placemark>',
                     f'    <name>Left Turn {idx + 1}</name>',
@@ -233,35 +232,18 @@ class KMLExporter:
                     '  </Placemark>',
                 ])
 
-        # Right turns (green) - optional
-        if len(self.right_turns_df) > 0:
-            for idx, turn in self.right_turns_df.iterrows():
-                angle = abs(turn.get('heading_change', turn.get('bearing_change', 0)))
-
-                kml_content.extend([
-                    '  <Placemark>',
-                    f'    <name>Right Turn {idx + 1}</name>',
-                    f'    <description>Angle: {angle:.1f}°</description>',
-                    '    <styleUrl>#rightTurnStyle</styleUrl>',
-                    '    <Point>',
-                    f'      <coordinates>{turn["longitude"]:.6f},{turn["latitude"]:.6f},3</coordinates>',
-                    '    </Point>',
-                    '  </Placemark>',
-                ])
 
     def generate_simplified_kml(self, output_filename: str,
                                 simplification_factor: int = 10,
                                 trip_name: str = "GPS Track (Simplified)"):
         """
-        Generate a simplified KML with fewer points (for large datasets)
+        remove some points if there are too many to simplify KML
 
         Args:
             output_filename: Path to output file
             simplification_factor: Keep every Nth point
             trip_name: Name for the trip
         """
-        print(f"\n=== Generating Simplified KML ===")
-        print(f"  Simplification: 1 in {simplification_factor} points")
 
         # Simplify dataframe but keep stops and turns
         simplified_df = self.df.iloc[::simplification_factor].copy()
