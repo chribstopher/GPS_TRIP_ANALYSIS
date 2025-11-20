@@ -68,13 +68,12 @@ class GPSAnalyzer:
 
         return stops_df
 
-    def detect_left_turns(self, heading_change_threshold=3e-07, speed_threshold=2,
+    def detect_left_turns(self, speed_threshold=2,
                           window_size=5) -> pd.DataFrame:
         """
-        Detect left turns based on heading change
+        find the left turns using the z- component of the cross product
 
-        Args:'
-            heading_change_threshold: Minimum heading change in degrees to count as turn, 2e-7 chosen based on all
+        Args:
             cross products calculated in gps data
             speed_threshold: Minimum speed in knots to consider heading valid
             window_size: Number of points to look ahead for cumulative turn

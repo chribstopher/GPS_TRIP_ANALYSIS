@@ -231,8 +231,18 @@ class GPSDataCleaner:
             distance = haversine_distance(prev['latitude'], prev['longitude'],
                                           curr['latitude'], curr['longitude'])
 
-            # Keep if direction changes or point far enough away
-            if angle_diff > angle_threshold or distance > min_distance:
+            detect_noise = angle_diff < angle_threshold and distance < min_distance
+
+            noise_distance_threshold = 5 # hard coding for testing --> switch to param?
+            noise_angle_threshold = 20.0 # also hard coded for now but could be better
+
+            # Detect if there is noise along straight segment by checking for sharp angle changes over
+            # a short distance
+            is_noise = (angle_diff > noise_angle_threshold and
+                        distance < noise_distance_threshold)
+
+            # Keep if direction changes or point far enough away but skip noise
+            if not is_noise and (angle_diff > angle_threshold or distance > min_distance):
                 simplified_indices.append(i)
 
         simplified_indices.append(len(df) - 1)  # always keep last point
@@ -242,20 +252,8 @@ class GPSDataCleaner:
 
         return simplified_df
 
-    def _calculate_bearing(self, point1: GPSPoint, point2: GPSPoint) -> float:
-        """Calculate bearing between two points in degrees"""
-        lat1 = math.radians(point1.latitude)
-        lat2 = math.radians(point2.latitude)
-        dlon = math.radians(point2.longitude - point1.longitude)
 
-        y = math.sin(dlon) * math.cos(lat2)
-        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
-
-        bearing = math.degrees(math.atan2(y, x))
-        return (bearing + 360) % 360
-
-
-    def clean_data(self) -> List[GPSPoint]:
+    def clean_data(self) -> pd.DataFrame:
         """ performs all of the data cleaning steps"""
         print("\nStarting GPS data cleaning...")
         # removing duplicates
@@ -268,6 +266,7 @@ class GPSDataCleaner:
         print ("starting to simplify straight segments")
         cleaned = self.simplify_straight_segments(cleaned)
         print("GPS data cleaning completed.\n")
+
         return cleaned
 
 def get_curdirection(lat1, lon1, lat2, lon2) -> float:
