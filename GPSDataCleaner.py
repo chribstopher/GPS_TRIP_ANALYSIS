@@ -152,53 +152,6 @@ class GPSDataCleaner:
         return trimmed_df
 
 
-    # def kalman_filtering(df: pd.DataFrame) -> pd.DataFrame:
-    #     """ use the kalman filter to smooth GPS data for better readings """
-    #     # define pyproj converter that takes cord points from lat/long to xy
-    #     # this is necessary for proper distance metrix calculations
-    #     transformer = Transformer.from_crs("epsg:4326", "epsg:32617", always_xy=True)
-    #
-    #     df_cpy = df.copy()
-    #     # apply the transformer to the copied df to get x,y values
-    #     df_cpy['x'], df_cpy['y'] = transformer.transform(
-    #         df['longitude'].values,
-    #         df['latitude'].values
-    #     )
-    #
-    #     # get only the x,y values to pass into kalman filter
-    #     measurements = df_cpy[['x', 'y']].values
-    #
-    #     kf = KalmanFilter(
-    #         # defines how the state of gps data evolves over time
-    #         transition_matrices=[[1, 0, 1, 0],
-    #                              [0, 1, 0, 1],
-    #                              [0, 0, 1, 0],
-    #                              [0, 0, 0, 1]],
-    #         # defines how the x,y values relate to the state (ignoring velocity)
-    #         observation_matrices=[[1, 0, 0, 0],
-    #                               [0, 1, 0, 0]],
-    #         # define level of noise in GPS readings
-    #         observation_covariance=5 ** 2 * np.eye(2),
-    #         # define assumed level of uncertainty in data
-    #         # since car is stopping / starting frequently, use a large number (5^2)
-    #         transition_covariance=1 ** 2 * np.eye(4),
-    #     )
-    #
-    #     smoothed_state_means, _ = kf.smooth(measurements)
-    #
-    #     # get the smoothed values
-    #     df_cpy['x_smooth'] = smoothed_state_means[:, 0]
-    #     df_cpy['y_smooth'] = smoothed_state_means[:, 1]
-    #
-    #     # convert back to origional values
-    #     df['longitude'], df['latitude'] = transformer.transform(
-    #         df_cpy['x_smooth'].values,
-    #         df_cpy['y_smooth'].values,
-    #         direction='INVERSE'
-    #     )
-    #
-    #     return df
-
     def simplify_straight_segments(self, df: pd.DataFrame,
                                    angle_threshold=5.0, min_distance=10) -> pd.DataFrame:
         """Remove redundant points along straight paths using a pandas DataFrame."""

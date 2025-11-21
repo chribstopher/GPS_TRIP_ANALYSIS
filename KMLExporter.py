@@ -15,21 +15,18 @@ class KMLExporter:
             left_turns_df: DataFrame with left turn information
         """
         self.df = df
+        # error checks for if data has no stops or left turns
         self.stops_df = stops_df if stops_df is not None else pd.DataFrame()
         self.left_turns_df = left_turns_df if left_turns_df is not None else pd.DataFrame()
 
-    def generate_kml(self, output_filename: str, trip_name: str = "GPS Track",
-                     max_points_per_path: int = 10000):
+    def generate_kml(self, output_filename: str, trip_name: str = "Path"):
         """
         create the KML file and save to current dir
 
         Args:
             output_filename: Path to output KML file
             trip_name: Name for the trip
-            max_points_per_path: Maximum points per path (KML limitation)
         """
-        print(f"\n=== Generating KML: {output_filename} ===")
-
         kml_content = []
 
         # KML Header
@@ -231,29 +228,3 @@ class KMLExporter:
                     '    </Point>',
                     '  </Placemark>',
                 ])
-
-
-    def generate_simplified_kml(self, output_filename: str,
-                                simplification_factor: int = 10,
-                                trip_name: str = "GPS Track (Simplified)"):
-        """
-        remove some points if there are too many to simplify KML
-
-        Args:
-            output_filename: Path to output file
-            simplification_factor: Keep every Nth point
-            trip_name: Name for the trip
-        """
-
-        # Simplify dataframe but keep stops and turns
-        simplified_df = self.df.iloc[::simplification_factor].copy()
-
-        # Create temporary exporter with simplified data
-        temp_exporter = KMLExporter(
-            simplified_df,
-            self.stops_df,
-            self.left_turns_df,
-            self.right_turns_df
-        )
-
-        temp_exporter.generate_kml(output_filename, trip_name)

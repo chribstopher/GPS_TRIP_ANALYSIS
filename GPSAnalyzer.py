@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import timedelta
 from typing import List, Tuple
+from GPSDataCleaner import haversine_distance
 from GPSDataCleaner import get_curdirection
 
 
@@ -24,14 +25,14 @@ class GPSAnalyzer:
         Returns:
             DataFrame with columns: [start_idx, end_idx, duration, latitude, longitude]
         """
-        print("\n=== Detecting Stops ===")
-
         stops = []
         i = 0
 
+        # For all the data points
         while i < len(self.df):
             # Check if vehicle is stopped
             if self.df.iloc[i]['speed_knots'] <= speed_threshold:
+                # Get the starting index and time
                 stop_start_idx = i
                 stop_start_time = self.df.iloc[i]['timestamp']
 
@@ -61,15 +62,11 @@ class GPSAnalyzer:
                 i += 1
 
         stops_df = pd.DataFrame(stops)
-        print(f"Detected {len(stops_df)} stops (duration >= {min_duration}s)")
-
-        if len(stops_df) > 0:
-            print(f"Total stop time: {stops_df['duration'].sum():.1f} seconds")
 
         return stops_df
 
     def detect_left_turns(self, speed_threshold=2,
-                          window_size=5) -> pd.DataFrame:
+                          window_size=3) -> pd.DataFrame:
         """
         find the left turns using the z- component of the cross product
 
@@ -83,11 +80,11 @@ class GPSAnalyzer:
         """
         turns = []
 
-        print("_______detecting left turns__________")
-
         # Calculate heading changes between consecutive points
         for i in range(window_size, len(self.df) - window_size):
             curr = self.df.iloc[i]
+
+            # print(f"Current lat / lon: {curr['latitude']} , {curr['longitude']}")
 
             # Only consider if vehicle is moving
             if curr['speed_knots'] < speed_threshold:
@@ -98,6 +95,7 @@ class GPSAnalyzer:
             prev = self.df.iloc[i - window_size]
             next = self.df.iloc[i + window_size]
 
+            # Create distance vectors
             vector1 = np.array([
                 curr['longitude'] - prev['longitude'],
                 curr['latitude'] - prev['latitude']
@@ -108,10 +106,10 @@ class GPSAnalyzer:
                 next['latitude'] - curr['latitude']
             ])
 
-            # get 2d cross product
-            cross_prod = vector1[0] * vector2[1] - vector1[1] * vector2[0]
+            # Get 2d cross product
+            cross_prod = vector2[0] * vector1[1] - vector2[1] * vector1[0]
 
-            # print(f"Index {i}: cross_prod = {cross_prod}")
+            # print(f"point {i} cross product: {cross_prod}")
 
             # Calculate magnitudes
             mag_v1 = np.sqrt(vector1[0] ** 2 + vector1[1] ** 2)
@@ -123,7 +121,8 @@ class GPSAnalyzer:
                 normalized_cross = cross_prod / (mag_v1 * mag_v2)
 
             # check if turn is left (negative z component)
-            if normalized_cross < -0.5:
+            if normalized_cross < -0.30:
+                # print(f"\n\t Left detected! cross prod = {cross_prod} normalized_cross = {normalized_cross}\n")
                 # check for a nearby turn to avoid duplicates
                 if not turns or i - turns[-1]['idx'] > window_size * 2:
                     turns.append({
@@ -144,21 +143,18 @@ class GPSAnalyzer:
         Returns:
             Tuple of (timedelta, minutes, seconds)
         """
+        # Check to see if there are enough points to calculate duration
         if len(self.df) < 2:
             return timedelta(0), 0.0, 0.0
 
+        # Get start and end time
         start_time = self.df.iloc[0]['timestamp']
         end_time = self.df.iloc[-1]['timestamp']
 
+        # Calculate duration
         duration = end_time - start_time
         minutes = duration.total_seconds() / 60
         seconds = duration.total_seconds()
-
-        print(f"\n=== Trip Duration ===")
-        print(f"Start: {start_time}")
-        print(f"End: {end_time}")
-        print(f"Duration: {duration}")
-        print(f"Minutes: {minutes:.2f}")
 
         return duration, minutes, seconds
 
@@ -170,17 +166,19 @@ class GPSAnalyzer:
         Returns:
             Tuple of (distance_meters, distance_miles)
         """
-        from GPSDataCleaner import haversine_distance
 
+        # Check to see if there are
         if len(self.df) < 2:
             return 0.0, 0.0
 
         total_distance_m = 0.0
 
+        # For every datapoint, calculate the dist
         for i in range(1, len(self.df)):
             prev = self.df.iloc[i - 1]
             curr = self.df.iloc[i]
 
+            # Use haversine distance package to get dist
             distance = haversine_distance(
                 prev['latitude'], prev['longitude'],
                 curr['latitude'], curr['longitude']
@@ -188,9 +186,6 @@ class GPSAnalyzer:
             total_distance_m += distance
 
         distance_miles = total_distance_m / 1609.34
-
-        print(f"\n=== Distance ===")
-        print(f"Total: {total_distance_m:.1f} meters ({distance_miles:.2f} miles)")
 
         return total_distance_m, distance_miles
 
@@ -204,14 +199,12 @@ class GPSAnalyzer:
         # Only consider points where vehicle is moving
         moving_df = self.df[self.df['speed_knots'] > 0.5]
 
+        # If no moving points return 0
         if len(moving_df) == 0:
             return 0.0, 0.0
 
         avg_knots = moving_df['speed_knots'].mean()
         avg_mph = avg_knots * 1.15078
-
-        print(f"\n=== Average Speed (moving) ===")
-        print(f"{avg_knots:.2f} knots ({avg_mph:.2f} mph)")
 
         return avg_knots, avg_mph
 
@@ -222,12 +215,10 @@ class GPSAnalyzer:
         Returns:
             Dictionary with all trip statistics
         """
-        print("\n" + "=" * 50)
-        print("TRIP SUMMARY")
-        print("=" * 50)
 
-        # Basic stats
+        # Get trip duration
         duration, minutes, seconds = self.calculate_trip_duration()
+        # Get total distance trav
         distance_m, distance_mi = self.calculate_distance()
         avg_knots, avg_mph = self.calculate_average_speed()
 
@@ -235,7 +226,8 @@ class GPSAnalyzer:
         stops_df = self.detect_stops()
         left_turns_df = self.detect_left_turns()
 
-        # Create summary dictionary
+
+        # Create summary dictionary for kml file generation
         summary = {
             'start_time': self.df.iloc[0]['timestamp'],
             'end_time': self.df.iloc[-1]['timestamp'],
@@ -254,56 +246,5 @@ class GPSAnalyzer:
             'left_turns': left_turns_df
         }
 
-        print("\n" + "=" * 50)
         return summary
 
-    def estimate_missing_time(self, expected_start_moving=True,
-                              expected_end_moving=True,
-                              avg_city_speed_mph=25) -> dict:
-        """
-        Estimate missing time if GPS started/stopped mid-journey
-
-        Args:
-            expected_start_moving: True if car should have been moving at start
-            expected_end_moving: True if car should have been moving at end
-            avg_city_speed_mph: Assumed average speed for estimation
-
-        Returns:
-            Dictionary with estimated missing time
-        """
-        print("\n=== Estimating Missing Time ===")
-
-        first_point = self.df.iloc[0]
-        last_point = self.df.iloc[-1]
-
-        estimates = {
-            'missing_start': False,
-            'missing_end': False,
-            'estimated_start_time': 0,
-            'estimated_end_time': 0
-        }
-
-        # Check if started while moving
-        if expected_start_moving and first_point['speed_knots'] > 2:
-            print(f"⚠️  GPS started mid-journey (speed: {first_point['speed_knots']:.1f} knots)")
-            # Estimate time to accelerate from 0 to current speed
-            # Assume ~10 seconds to reach cruising speed
-            estimates['missing_start'] = True
-            estimates['estimated_start_time'] = 10
-            print(f"   Estimated missing start time: ~{estimates['estimated_start_time']}s")
-
-        # Check if ended while moving
-        if expected_end_moving and last_point['speed_knots'] > 2:
-            print(f"⚠️  GPS ended mid-journey (speed: {last_point['speed_knots']:.1f} knots)")
-            # Estimate time to decelerate
-            estimates['missing_end'] = True
-            estimates['estimated_end_time'] = 10
-            print(f"   Estimated missing end time: ~{estimates['estimated_end_time']}s")
-
-        total_estimated = estimates['estimated_start_time'] + estimates['estimated_end_time']
-        if total_estimated > 0:
-            print(f"\nTotal estimated missing time: ~{total_estimated}s")
-        else:
-            print("✓ Trip appears complete (started and ended stationary)")
-
-        return estimates
