@@ -65,8 +65,8 @@ class GPSAnalyzer:
 
         return stops_df
 
-    def detect_left_turns(self, speed_threshold=2,
-                          window_size=3) -> pd.DataFrame:
+    def detect_left_turns(self, speed_threshold=0,
+                          window_size=5) -> pd.DataFrame:
         """
         find the left turns using the z- component of the cross product
 
@@ -107,7 +107,7 @@ class GPSAnalyzer:
             ])
 
             # Get 2d cross product
-            cross_prod = vector2[0] * vector1[1] - vector2[1] * vector1[0]
+            cross_prod = vector1[0] * vector2[1] - vector1[1] * vector2[0]
 
             # print(f"point {i} cross product: {cross_prod}")
 
@@ -121,7 +121,7 @@ class GPSAnalyzer:
                 normalized_cross = cross_prod / (mag_v1 * mag_v2)
 
             # check if turn is left (negative z component)
-            if normalized_cross < -0.30:
+            if normalized_cross > 0.30:
                 # print(f"\n\t Left detected! cross prod = {cross_prod} normalized_cross = {normalized_cross}\n")
                 # check for a nearby turn to avoid duplicates
                 if not turns or i - turns[-1]['idx'] > window_size * 2:
